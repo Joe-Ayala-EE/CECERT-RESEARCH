@@ -1,0 +1,198 @@
+#include <Adafruit_MAX31856.h>
+#include <SPI.h>
+#include <SD.h>
+// Use software SPI: CS, DI, DO, CLK
+Adafruit_MAX31856 maxthermo = Adafruit_MAX31856(9, 50, 51, 52);
+// use hardware SPI, just pass in the CS pin
+Adafruit_MAX31856 maxthermo2 = Adafruit_MAX31856(8, 50, 51, 52);
+
+
+#include <Adafruit_GPS.h>    //Install the adafruit GPS library
+#include <SoftwareSerial.h> //Load the Software Serial library
+//Connect the GPS power pin to 5V
+//Connect the Ground pin to Ground
+//Connect the TX pin to Digital Pin 11
+//Connect the RX pin to Digital Pin 10
+SoftwareSerial mySerial(11,10); //Initialize the Software Serial port
+Adafruit_GPS GPS(&mySerial); //Create the GPS Object
+#define GPSECHO true
+//Leave 'true' to debug and listen to raw GPS sentences
+
+//Adafruit_MAX31856 sd = Adafruit_MAX31856(53, 50, 51, 52);
+
+int chipSelect = 4;
+float CJTOne;
+float CJTTwo;
+float TCTOne;
+float TCTTwo;
+
+String NMEA1; //Variable for first NMEA sentence
+String NMEA2; //Variable for second NMEA sentence
+char c; //to read characters coming from the GPS
+
+//File mySensorData;
+
+void setup() 
+{
+  Serial.begin(115200);
+  delay(5000); 
+  Serial.println("Adafruit GPS library basic test!");
+  //9600 NMEA is default baud rate for Adafruit MTK GPS's- some use 4800
+  GPS.begin(9600);
+  //GPS Command to turn on RMC and GGA type data acquisition
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);  
+  //Update rate of the GPS set to 1Hz
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);  
+  //Requests update on the Antenna Status
+  GPS.sendCommand(PGCMD_ANTENNA);
+
+  delay(1000);
+  //Ask for firmware version
+  mySerial.println(PMTK_Q_RELEASE);
+
+  
+  Serial.println("MAX31856 thermocouple test");
+  
+  maxthermo.begin();  //Initate the first thermocouple
+  maxthermo.setThermocoupleType(MAX31856_TCTYPE_K);
+  Serial.print("Thermocouple type: ");
+  switch (maxthermo.getThermocoupleType() ) {
+    case MAX31856_TCTYPE_K: Serial.println("K Type"); break;
+    case MAX31856_VMODE_G8: Serial.println("Voltage x8 Gain mode"); break;
+    case MAX31856_VMODE_G32: Serial.println("Voltage x8 Gain mode"); break;
+    default: Serial.println("Unknown"); break;
+  }
+  maxthermo2.begin(); //Initiate the second thermocouple
+  maxthermo2.setThermocoupleType(MAX31856_TCTYPE_K);
+  Serial.print("Thermocouple type: ");
+  switch (maxthermo2.getThermocoupleType()) 
+  {
+    case MAX31856_TCTYPE_K: Serial.println("K Type"); break;
+    case MAX31856_VMODE_G8: Serial.println("Voltage x8 Gain mode"); break;
+    case MAX31856_VMODE_G32: Serial.println("Voltage x8 Gain mode"); break;
+    default: Serial.println("Unknown"); break;
+  }
+//SD.begin(chipSelect);
+pinMode(53, OUTPUT); // Must declare as an output for SPI protocol as pin 53 is Slave Select pin on Mega
+ 
+}
+
+void loop() 
+{    
+  readGPS();
+  thermoSerialWriter();
+  CJTOne = maxthermo.readCJTemperature() ;   //Read Cold Junction Temperature from Thermo One
+  CJTTwo = maxthermo2.readCJTemperature() ;  //Read Cold Junction Temperature from Thermo Two
+  TCTOne = maxthermo.readThermocoupleTemperature() ;   //Read Thermo Temperature from Thermo One
+  TCTTwo = maxthermo2.readThermocoupleTemperature() ;  //Read Thermo Temperature from Thermo Two
+  String dataStringOne = String(CJTOne) + "," + String(CJTOne);
+  Serial.println(dataStringOne);
+  String dataStringTwo = String(CJTTwo) + "," + String(CJTTwo); 
+  //thermoSensorWriter(dataStringOne, dataStringTwo);
+
+}
+
+
+
+
+void readGPS() 
+{
+  
+  clearGPS();
+  while(!GPS.newNMEAreceived()) { //Loop until you have a good NMEA sentence
+    c=GPS.read();
+  }
+  GPS.parse(GPS.lastNMEA()); //Parse that last good NMEA sentence
+  NMEA1=GPS.lastNMEA();
+  
+   while(!GPS.newNMEAreceived()) { //Loop until you have a good NMEA sentence
+    c=GPS.read();
+  }
+  GPS.parse(GPS.lastNMEA()); //Parse that last good NMEA sentence
+  NMEA2=GPS.lastNMEA();
+  
+  Serial.println(NMEA1);
+  Serial.println(NMEA2);
+  Serial.print("Location: ");
+  Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
+  Serial.print(", ");
+  Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
+
+  Serial.print("Speed (knots): "); Serial.println(GPS.speed);
+  Serial.print("Angle: "); Serial.println(GPS.angle);
+  Serial.print("Altitude: "); Serial.println(GPS.altitude);
+  Serial.print("Satellites: "); Serial.println((int)GPS.satellites);
+  
+  Serial.println("");
+  
+}
+
+void clearGPS() 
+{  //Clear old and corrupt data from serial port 
+  while(!GPS.newNMEAreceived()) { //Loop until you have a good NMEA sentence
+    c=GPS.read();
+  }
+  GPS.parse(GPS.lastNMEA()); //Parse that last good NMEA sentence
+  
+  while(!GPS.newNMEAreceived()) { //Loop until you have a good NMEA sentence
+    c=GPS.read();
+  }
+  GPS.parse(GPS.lastNMEA()); //Parse that last good NMEA sentence
+   while(!GPS.newNMEAreceived()) { //Loop until you have a good NMEA sentence
+    c=GPS.read();
+  }
+  GPS.parse(GPS.lastNMEA()); //Parse that last good NMEA sentence
+  
+}
+
+
+
+
+void thermoSerialWriter() //When called it will write the sensor data on the Serial monitor
+{
+  Serial.print("Cold Junction Temp: "); 
+  Serial.println(maxthermo.readCJTemperature());
+
+  Serial.print("Thermocouple Temp: "); 
+  Serial.println(maxthermo.readThermocoupleTemperature());
+  
+  Serial.print("Cold Junction Temp Two: "); 
+  Serial.println(maxthermo2.readCJTemperature());
+
+  Serial.print("Thermocouple Temp Two: "); 
+  Serial.println(maxthermo2.readThermocoupleTemperature());  
+}
+
+
+/*
+void thermoSensorWriter(String dataStringOne, String dataStringTwo) //When called it will write the sensor data on to the SD card
+{
+  delay(1000);
+  mySensorData = SD.open("TLog1.txt", FILE_WRITE);  //Produce a .txt for thermocouple one
+  if(mySensorData)
+  {  
+  mySensorData.print("Cold Junction Temp for Thermocouple One ");
+  mySensorData.print(CJTOne);
+  mySensorData.print(", "); 
+  mySensorData.print("Thermocouple Temp one "); 
+  mySensorData.println(TCTOne);
+  mySensorData.print(dataStringOne);
+  mySensorData.println(" ");
+  mySensorData.close();   //Close the file
+  //Take a measurement every 100 milliseconds  
+  }
+  mySensorData = SD.open("TLog2.txt", FILE_WRITE);  //Produce a .txt for thermocouple one
+  if(mySensorData)
+  {  
+  mySensorData.print("Cold Junction Temp for Thermocouple One ");
+  mySensorData.print(CJTTwo);
+  mySensorData.print(", "); 
+  mySensorData.print("Thermocouple Temp one "); 
+  mySensorData.println(TCTTwo);
+  mySensorData.print(dataStringTwo);
+  mySensorData.println(" ");
+  mySensorData.close();   //Close the file
+  //Take a measurement every 100 milliseconds  
+  } 
+}
+*/
